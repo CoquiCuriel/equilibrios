@@ -1,0 +1,1494 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-black text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Equilibrios - Gestión de Gimnasio</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Montserrat -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Firebase Cloud Integration Scripts -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, onSnapshot, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Config and Initialization
+        const firebaseConfig = typeof __firebase_config !== 'undefined' 
+            ? JSON.parse(__firebase_config) 
+            : { apiKey: "demo-api-key", authDomain: "demo.firebaseapp.com", projectId: "demo-project" };
+            
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'equilibrios-gym';
+        
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Firestore Paths (Rule 1)
+        const getCollectionRef = (collName) => collection(db, 'artifacts', appId, 'public', 'data', collName);
+        const getDocRef = (collName, docId) => doc(db, 'artifacts', appId, 'public', 'data', collName, docId);
+
+        // Expose Firebase tools to global scope
+        window.fbAuth = auth;
+        window.fbDb = db;
+        window.fbUtils = {
+            signInAnonymously,
+            signInWithCustomToken,
+            signOut,
+            onAuthStateChanged,
+            getCollectionRef,
+            getDocRef,
+            setDoc,
+            deleteDoc,
+            onSnapshot
+        };
+    </script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Montserrat', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            black: '#09090b',
+                            dark: '#121215',
+                            card: '#1a1a1e',
+                            border: '#27272a',
+                            muted: '#a1a1aa',
+                            white: '#ffffff',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar for dark modern theme */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #121215;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3f3f46;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #52525b;
+        }
+    </style>
+</head>
+<body class="h-full font-sans bg-brand-black text-gray-100 antialiased flex flex-col md:flex-row overflow-x-hidden">
+
+    <!-- LOGIN SCREEN MODAL / OVERLAY -->
+    <div id="loginScreen" class="fixed inset-0 z-50 bg-black flex items-center justify-center p-4">
+        <div class="bg-brand-card border border-brand-border rounded-2xl max-w-md w-full p-8 space-y-6 shadow-2xl relative text-center">
+            <!-- Brand Logo -->
+            <div class="mx-auto w-16 h-16 rounded-full bg-white text-black flex items-center justify-center font-extrabold text-3xl tracking-tighter shadow-xl shadow-white/10">
+                EQ
+            </div>
+            <div>
+                <h2 class="text-2xl font-extrabold text-white tracking-widest uppercase">Equilibrios</h2>
+                <p class="text-xs text-brand-muted tracking-wider uppercase mt-1">Sistema de Gestión de Gimnasio</p>
+            </div>
+
+            <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-4 text-left pt-2">
+                <div>
+                    <label class="block text-xs font-semibold text-brand-muted mb-1">Usuario</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-user absolute left-3.5 top-3 text-brand-muted text-sm"></i>
+                        <input type="text" id="loginUser" required placeholder="Ingresa tu usuario" value="admin" class="w-full bg-brand-dark border border-brand-border rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-white transition">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-brand-muted mb-1">Contraseña</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-lock absolute left-3.5 top-3 text-brand-muted text-sm"></i>
+                        <input type="password" id="loginPass" required placeholder="••••••••" value="" class="w-full bg-brand-dark border border-brand-border rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-white transition">
+                    </div>
+                </div>
+
+                <div id="loginError" class="hidden bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-xs text-red-400 text-center">
+                    Usuario o contraseña incorrectos.
+                </div>
+
+                <button type="submit" class="w-full bg-white hover:bg-gray-200 text-black py-3 rounded-xl font-bold text-sm transition shadow-lg shadow-white/10 mt-2">
+                    Iniciar Sesión
+                </button>
+            </form>
+
+           
+        </div>
+    </div>
+
+    <!-- Mobile Header -->
+    <header class="md:hidden bg-brand-dark border-b border-brand-border p-4 flex justify-between items-center sticky top-0 z-30">
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-full bg-white text-black flex items-center justify-center font-bold text-xl tracking-tighter">
+                EQ
+            </div>
+            <span class="font-bold text-xl tracking-wider uppercase text-white">Equilibrios</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <button onclick="logout()" class="text-xs text-brand-muted hover:text-white p-2">
+                <i class="fa-solid fa-right-from-bracket text-lg"></i>
+            </button>
+            <button id="mobileMenuBtn" class="text-gray-300 hover:text-white p-2">
+                <i class="fa-solid fa-bars text-xl"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Sidebar Navigation -->
+    <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-64 bg-brand-dark border-r border-brand-border transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out flex flex-col justify-between md:static md:z-auto">
+        <div>
+            <!-- Gym Brand Header -->
+            <div class="p-6 hidden md:flex items-center gap-3 border-b border-brand-border">
+                <div class="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center font-extrabold text-2xl tracking-tighter shadow-lg shadow-white/10">
+                    EQ
+                </div>
+                <div>
+                    <h1 class="font-extrabold text-xl tracking-widest text-white uppercase">Equilibrios</h1>
+                    <p class="text-xs text-brand-muted tracking-wider uppercase">Fitness Center</p>
+                </div>
+            </div>
+
+            <!-- Quick Info Badge -->
+            <div class="px-4 py-3 mx-4 my-4 bg-brand-card rounded-xl border border-brand-border flex items-center justify-between text-xs text-brand-muted">
+                <span><i class="fa-regular fa-calendar-check mr-1 text-white"></i> Hoy:</span>
+                <span id="currentDateDisplay" class="font-medium text-white">--/--/----</span>
+            </div>
+
+            <!-- Sync Indicator Badge -->
+            <div class="px-4 py-2 mx-4 mb-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-between text-xs text-emerald-400">
+                <span class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Sincronizado en Nube
+                </span>
+                <i class="fa-solid fa-cloud text-xs"></i>
+            </div>
+
+            <!-- Navigation Links -->
+            <nav class="px-3 space-y-1">
+                <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-all text-white bg-white/10 border border-white/20">
+                    <i class="fa-solid fa-chart-pie w-5"></i> Dashboard
+                </button>
+                <button onclick="switchTab('clients')" id="nav-clients" class="nav-btn w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-brand-muted hover:text-white hover:bg-brand-card rounded-xl transition-all border border-transparent">
+                    <i class="fa-solid fa-users w-5"></i> Clientes
+                </button>
+                <button onclick="switchTab('payments')" id="nav-payments" class="nav-btn w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-brand-muted hover:text-white hover:bg-brand-card rounded-xl transition-all border border-transparent">
+                    <i class="fa-solid fa-receipt w-5"></i> Pagos y Cobros
+                </button>
+                <button onclick="switchTab('plans')" id="nav-plans" class="nav-btn w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-brand-muted hover:text-white hover:bg-brand-card rounded-xl transition-all border border-transparent">
+                    <i class="fa-solid fa-dumbbell w-5"></i> Planes y Cuotas
+                </button>
+                <button onclick="switchTab('defaulters')" id="nav-defaulters" class="nav-btn w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-brand-muted hover:text-white hover:bg-brand-card rounded-xl transition-all border border-transparent">
+                    <i class="fa-solid fa-triangle-exclamation w-5 text-amber-400"></i> Morosos / Impagos
+                </button>
+            </nav>
+        </div>
+
+        <!-- System Reset / Info -->
+        <div class="p-4 border-t border-brand-border space-y-2">
+            <button onclick="logout()" class="w-full text-xs text-brand-muted hover:text-white py-2 transition flex items-center justify-center gap-2 border border-brand-border rounded-xl">
+                <i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión
+            </button>
+            <button onclick="seedInitialDataToCloud()" class="w-full text-xs text-brand-muted hover:text-emerald-400 py-1 transition flex items-center justify-center gap-2">
+                <i class="fa-solid fa-cloud-arrow-up"></i> Cargar Datos Iniciales a Nube
+            </button>
+        </div>
+    </aside>
+
+    <!-- Overlay for mobile menu -->
+    <div id="mobileOverlay" class="fixed inset-0 bg-black/70 z-30 hidden md:hidden"></div>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        
+        <!-- TOP ALERT BAR (Important Notifications) -->
+        <div id="alertContainer" class="space-y-3 mb-6"></div>
+
+        <!-- SECTION: DASHBOARD -->
+        <section id="sec-dashboard" class="tab-content space-y-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-brand-border pb-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-white tracking-tight">Resumen General</h2>
+                    <p class="text-sm text-brand-muted">Estado actual del gimnasio y alertas principales.</p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="openClientModal()" class="bg-white hover:bg-gray-200 text-black px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 shadow-lg shadow-white/5">
+                        <i class="fa-solid fa-user-plus"></i> Nuevo Cliente
+                    </button>
+                    <button onclick="openPaymentModal()" class="bg-brand-card hover:bg-brand-border text-white border border-brand-border px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2">
+                        <i class="fa-solid fa-dollar-sign"></i> Registrar Pago
+                    </button>
+                </div>
+            </div>
+
+            <!-- KPI Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-brand-card p-5 rounded-2xl border border-brand-border flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-brand-muted uppercase tracking-wider">Clientes Activos</p>
+                        <h3 id="statTotalActive" class="text-3xl font-extrabold text-white mt-1">0</h3>
+                        <p id="statTotalClients" class="text-xs text-brand-muted mt-1">0 registrados en total</p>
+                    </div>
+                    <div class="w-12 h-12 rounded-xl bg-white/10 text-white flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-user-check"></i>
+                    </div>
+                </div>
+
+                <div class="bg-brand-card p-5 rounded-2xl border border-brand-border flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-brand-muted uppercase tracking-wider">Al Día este Mes</p>
+                        <h3 id="statPaidThisMonth" class="text-3xl font-extrabold text-white mt-1">0</h3>
+                        <p id="statPaidPercentage" class="text-xs text-emerald-400 font-medium mt-1">0% del total</p>
+                    </div>
+                    <div class="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-circle-check"></i>
+                    </div>
+                </div>
+
+                <div class="bg-brand-card p-5 rounded-2xl border border-brand-border flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-brand-muted uppercase tracking-wider">Pendientes de Pago</p>
+                        <h3 id="statUnpaidThisMonth" class="text-3xl font-extrabold text-amber-400 mt-1">0</h3>
+                        <p class="text-xs text-amber-400/80 mt-1">Requieren atención</p>
+                    </div>
+                    <div class="w-12 h-12 rounded-xl bg-amber-400/10 text-amber-400 flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-clock"></i>
+                    </div>
+                </div>
+
+                <div class="bg-brand-card p-5 rounded-2xl border border-brand-border flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-brand-muted uppercase tracking-wider">Recaudación Mes</p>
+                        <h3 id="statIncomeMonth" class="text-2xl font-extrabold text-white mt-1">$0</h3>
+                        <p id="statIncomeCount" class="text-xs text-brand-muted mt-1">0 pagos registrados</p>
+                    </div>
+                    <div class="w-12 h-12 rounded-xl bg-white/10 text-white flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-wallet"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Two Columns Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Birthday Widget -->
+                <div class="bg-brand-card rounded-2xl border border-brand-border p-5 flex flex-col">
+                    <div class="flex items-center justify-between mb-4 pb-3 border-b border-brand-border">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-cake-candles text-white text-lg"></i>
+                            <h3 class="font-bold text-white text-base">Próximos Cumpleaños</h3>
+                        </div>
+                        <span class="text-xs bg-white/10 text-white px-2 py-0.5 rounded-full" id="bdayCount">0</span>
+                    </div>
+                    <div id="birthdayList" class="space-y-3 flex-1 overflow-y-auto max-h-[320px] pr-1">
+                        <!-- Dynamic List -->
+                    </div>
+                </div>
+
+                <!-- Recent Payments Widget -->
+                <div class="lg:col-span-2 bg-brand-card rounded-2xl border border-brand-border p-5 flex flex-col">
+                    <div class="flex items-center justify-between mb-4 pb-3 border-b border-brand-border">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-clock-rotate-left text-white text-lg"></i>
+                            <h3 class="font-bold text-white text-base">Últimos Pagos Registrados</h3>
+                        </div>
+                        <button onclick="switchTab('payments')" class="text-xs text-brand-muted hover:text-white">Ver todos &rarr;</button>
+                    </div>
+                    <div id="recentPaymentsList" class="space-y-3 overflow-y-auto max-h-[320px] pr-1">
+                        <!-- Dynamic List -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION: CLIENTS -->
+        <section id="sec-clients" class="tab-content hidden space-y-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-brand-border pb-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-white tracking-tight">Gestión de Clientes</h2>
+                    <p class="text-sm text-brand-muted">Alta, baja, modificación y consulta de alumnos.</p>
+                </div>
+                <button onclick="openClientModal()" class="bg-white hover:bg-gray-200 text-black px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 shadow-lg shadow-white/5">
+                    <i class="fa-solid fa-user-plus"></i> Nuevo Cliente
+                </button>
+            </div>
+
+            <!-- Filters Bar -->
+            <div class="bg-brand-card p-4 rounded-2xl border border-brand-border flex flex-col sm:flex-row gap-4 items-center justify-between">
+                <div class="relative w-full sm:w-80">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3.5 text-brand-muted text-sm"></i>
+                    <input type="text" id="searchClientInput" oninput="renderClientsTable()" placeholder="Buscar por nombre, DNI o teléfono..." class="w-full bg-brand-dark border border-brand-border rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-brand-muted focus:outline-none focus:border-white transition">
+                </div>
+                <div class="flex flex-wrap gap-3 w-full sm:w-auto">
+                    <select id="filterClientPlan" onchange="renderClientsTable()" class="bg-brand-dark border border-brand-border text-sm text-white rounded-xl px-3 py-2.5 focus:outline-none focus:border-white">
+                        <option value="">Todos los planes</option>
+                    </select>
+                    <select id="filterClientStatus" onchange="renderClientsTable()" class="bg-brand-dark border border-brand-border text-sm text-white rounded-xl px-3 py-2.5 focus:outline-none focus:border-white">
+                        <option value="all">Todos los estados</option>
+                        <option value="active" selected>Sólo Activos</option>
+                        <option value="inactive">Inactivos (Baja)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Clients Table -->
+            <div class="bg-brand-card rounded-2xl border border-brand-border overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-brand-dark border-b border-brand-border text-xs text-brand-muted uppercase font-semibold">
+                                <th class="p-4">Cliente</th>
+                                <th class="p-4">DNI / Contacto</th>
+                                <th class="p-4">Plan Actual</th>
+                                <th class="p-4">Estado Pago Mes</th>
+                                <th class="p-4">Estado</th>
+                                <th class="p-4 text-right">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="clientsTableBody" class="divide-y divide-brand-border text-sm">
+                            <!-- Dynamic Content -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION: PAYMENTS -->
+        <section id="sec-payments" class="tab-content hidden space-y-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-brand-border pb-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-white tracking-tight">Registro de Pagos</h2>
+                    <p class="text-sm text-brand-muted">Historial de pagos y cobro de cuotas mensuales.</p>
+                </div>
+                <button onclick="openPaymentModal()" class="bg-white hover:bg-gray-200 text-black px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 shadow-lg shadow-white/5">
+                    <i class="fa-solid fa-plus"></i> Registrar Nuevo Pago
+                </button>
+            </div>
+
+            <!-- Payment Filters -->
+            <div class="bg-brand-card p-4 rounded-2xl border border-brand-border flex flex-col sm:flex-row gap-4 items-center justify-between">
+                <div class="relative w-full sm:w-80">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3.5 text-brand-muted text-sm"></i>
+                    <input type="text" id="searchPaymentInput" oninput="renderPaymentsTable()" placeholder="Buscar por cliente..." class="w-full bg-brand-dark border border-brand-border rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-brand-muted focus:outline-none focus:border-white transition">
+                </div>
+                <div class="flex flex-wrap gap-3 w-full sm:w-auto">
+                    <select id="filterPaymentMonth" onchange="renderPaymentsTable()" class="bg-brand-dark border border-brand-border text-sm text-white rounded-xl px-3 py-2.5 focus:outline-none focus:border-white">
+                        <option value="">Todos los meses</option>
+                        <!-- Filled by JS -->
+                    </select>
+                    <select id="filterPaymentYear" onchange="renderPaymentsTable()" class="bg-brand-dark border border-brand-border text-sm text-white rounded-xl px-3 py-2.5 focus:outline-none focus:border-white">
+                        <!-- Filled by JS -->
+                    </select>
+                </div>
+            </div>
+
+            <!-- Payments Table -->
+            <div class="bg-brand-card rounded-2xl border border-brand-border overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-brand-dark border-b border-brand-border text-xs text-brand-muted uppercase font-semibold">
+                                <th class="p-4">Fecha Pago</th>
+                                <th class="p-4">Cliente</th>
+                                <th class="p-4">Mes Correspondiente</th>
+                                <th class="p-4">Plan Abonado</th>
+                                <th class="p-4">Monto</th>
+                                <th class="p-4">Método</th>
+                                <th class="p-4 text-right">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paymentsTableBody" class="divide-y divide-brand-border text-sm">
+                            <!-- Dynamic Content -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION: PLANS -->
+        <section id="sec-plans" class="tab-content hidden space-y-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-brand-border pb-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-white tracking-tight">Planes de Membresía</h2>
+                    <p class="text-sm text-brand-muted">Configura las opciones de cuotas y servicios del gimnasio.</p>
+                </div>
+                <button onclick="openPlanModal()" class="bg-white hover:bg-gray-200 text-black px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 shadow-lg shadow-white/5">
+                    <i class="fa-solid fa-plus"></i> Crear Nuevo Plan
+                </button>
+            </div>
+
+            <!-- Plans Cards Grid -->
+            <div id="plansGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Dynamic Content -->
+            </div>
+        </section>
+
+        <!-- SECTION: DEFAULTERS / PENDING -->
+        <section id="sec-defaulters" class="tab-content hidden space-y-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-brand-border pb-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-white tracking-tight">Control de Morosos / Impagos</h2>
+                    <p class="text-sm text-brand-muted">Clientes con cuotas pendientes en el periodo seleccionado.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <label for="defaulterMonthSelect" class="text-sm text-brand-muted">Periodo:</label>
+                    <select id="defaulterMonthSelect" onchange="renderDefaultersTable()" class="bg-brand-card border border-brand-border text-sm text-white rounded-xl px-3 py-2 focus:outline-none focus:border-white">
+                        <!-- Filled JS -->
+                    </select>
+                </div>
+            </div>
+
+            <div class="bg-brand-card rounded-2xl border border-brand-border overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-brand-dark border-b border-brand-border text-xs text-brand-muted uppercase font-semibold">
+                                <th class="p-4">Cliente</th>
+                                <th class="p-4">Teléfono</th>
+                                <th class="p-4">Plan</th>
+                                <th class="p-4">Monto Estimado</th>
+                                <th class="p-4">Último Pago Registrado</th>
+                                <th class="p-4 text-right">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="defaultersTableBody" class="divide-y divide-brand-border text-sm">
+                            <!-- Dynamic Content -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- MODAL: CLIENT (CREATE / EDIT) -->
+    <div id="clientModal" class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 hidden backdrop-blur-sm">
+        <div class="bg-brand-card border border-brand-border rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative">
+            <div class="flex justify-between items-center border-b border-brand-border pb-3">
+                <h3 id="clientModalTitle" class="text-lg font-bold text-white">Alta de Cliente</h3>
+                <button onclick="closeModal('clientModal')" class="text-brand-muted hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <form id="clientForm" onsubmit="saveClient(event)" class="space-y-4">
+                <input type="hidden" id="clientId">
+                <div>
+                    <label class="block text-xs font-semibold text-brand-muted mb-1">Nombre Completo *</label>
+                    <input type="text" id="clientName" required placeholder="Ej. Valeria Rossi" class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white">
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-brand-muted mb-1">DNI / Documento *</label>
+                        <input type="text" id="clientDni" required placeholder="Ej. 38900211" class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-brand-muted mb-1">Teléfono *</label>
+                        <input type="text" id="clientPhone" required placeholder="Ej. 2604123456" class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-brand-muted mb-1">Fecha Nacimiento (Cumpleaños)</label>
+                        <input type="date" id="clientBirth" class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-brand-muted mb-1">Plan Asignado *</label>
+                        <select id="clientPlanId" required class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white">
+                            <!-- Filled dynamically -->
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-brand-muted mb-1">Estado</label>
+                    <select id="clientStatus" class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white">
+                        <option value="active">Activo (Habilitado)</option>
+                        <option value="inactive">Inactivo (Dado de baja)</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-3 border-t border-brand-border">
+                    <button type="button" onclick="closeModal('clientModal')" class="px-4 py-2 rounded-xl text-sm font-medium text-brand-muted hover:text-white border border-brand-border hover:bg-brand-dark">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 rounded-xl text-sm font-semibold bg-white text-black hover:bg-gray-200 shadow-md">Guardar Cliente</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: PAYMENT (CREATE) -->
+    <div id="paymentModal" class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 hidden backdrop-blur-sm">
+        <div class="bg-brand-card border border-brand-border rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative">
+            <div class="flex justify-between items-center border-b border-brand-border pb-3">
+                <h3 class="text-lg font-bold text-white">Registrar Cobro de Cuota</h3>
+                <button onclick="closeModal('paymentModal')" class="text-brand-muted hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <form id="paymentForm" onsubmit="savePayment(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-brand-muted mb-1">Seleccionar Cliente *</label>
+                    <select id="paymentClientId" onchange="onPaymentClientChange()" required class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white">
+                        <!-- Filled dynamically -->
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-brand-muted mb-1">Mes a abonar *</label>
+                        <select id="paymentMonth" required class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white">
+                            <option value="1">Enero</option>
+                            <option value="2">Febrero</option>
+                            <option value="3">Marzo</option>
+                            <option value="4">Abril</option>
+                            <option value="5">Mayo</option>
+                            <option value="6">Junio</option>
+                            <option value="7">Julio</option>
+                            <option value="8">Agosto</option>
+                            <option value="9">Septiembre</option>
+                            <option value="10">Octubre</option>
+                            <option value="11">Noviembre</option>
+                            <option value="12">Diciembre</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-brand-muted mb-1">Año *</label>
+                        <select id="paymentYear" required class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white">
+                            <!-- Filled dynamically -->
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-brand-muted mb-1">Monto ($) *</label>
+                        <input type="number" id="paymentAmount" required min="0" step="100" class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-brand-muted mb-1">Forma de Pago</label>
+                        <select id="paymentMethod" class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white">
+                            <option value="Efectivo">Efectivo</option>
+                            <option value="Transferencia">Transferencia / Alias</option>
+                            <option value="Tarjeta">Tarjeta Débito/Crédito</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-brand-muted mb-1">Fecha de Cobro</label>
+                    <input type="date" id="paymentDate" required class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white">
+                </div>
+
+                <div class="flex justify-end gap-3 pt-3 border-t border-brand-border">
+                    <button type="button" onclick="closeModal('paymentModal')" class="px-4 py-2 rounded-xl text-sm font-medium text-brand-muted hover:text-white border border-brand-border hover:bg-brand-dark">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 rounded-xl text-sm font-semibold bg-white text-black hover:bg-gray-200 shadow-md">Confirmar Pago</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: PLAN (CREATE / EDIT) -->
+    <div id="planModal" class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 hidden backdrop-blur-sm">
+        <div class="bg-brand-card border border-brand-border rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">
+            <div class="flex justify-between items-center border-b border-brand-border pb-3">
+                <h3 id="planModalTitle" class="text-lg font-bold text-white">Alta de Plan</h3>
+                <button onclick="closeModal('planModal')" class="text-brand-muted hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <form id="planForm" onsubmit="savePlan(event)" class="space-y-4">
+                <input type="hidden" id="planId">
+                <div>
+                    <label class="block text-xs font-semibold text-brand-muted mb-1">Nombre del Plan *</label>
+                    <input type="text" id="planName" required placeholder="Ej. Pase Libre Musculación" class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-brand-muted mb-1">Precio Mensual ($) *</label>
+                    <input type="number" id="planPrice" required min="0" placeholder="Ej. 18000" class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-brand-muted mb-1">Descripción / Días incluidos</label>
+                    <textarea id="planDesc" rows="3" placeholder="Ej. Acceso ilimitado de Lunes a Sábados + Sala de pesas." class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white"></textarea>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-3 border-t border-brand-border">
+                    <button type="button" onclick="closeModal('planModal')" class="px-4 py-2 rounded-xl text-sm font-medium text-brand-muted hover:text-white border border-brand-border hover:bg-brand-dark">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 rounded-xl text-sm font-semibold bg-white text-black hover:bg-gray-200 shadow-md">Guardar Plan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- CUSTOM CONFIRM/ALERT TOAST MODAL -->
+    <div id="toast" class="fixed bottom-5 right-5 z-50 bg-white text-black px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 transform translate-y-20 opacity-0 transition-all duration-300">
+        <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-600 text-lg"></i>
+        <span id="toastMsg" class="text-sm font-medium">Mensaje de notificación</span>
+    </div>
+
+    <script>
+        // --- CONSTANTS & MONTH NAMES ---
+        const MONTH_NAMES = [
+            "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+        ];
+
+        // Default Admin User Credentials
+        const ADMIN_USER = "admin";
+        const ADMIN_PASS = "equilibrios2026";
+
+        // --- INITIAL SEED DATA ---
+        const INITIAL_PLANS = [
+            { id: 'p1', name: 'Pase Libre Musculación', price: 18000, desc: 'Acceso total a sala de pesas y cardio todos los días.' },
+            { id: 'p2', name: 'Crossfit & Funcional 3x', price: 16000, desc: '3 clases semanales guiadas de entrenamiento funcional.' },
+            { id: 'p3', name: 'Pase Total Premium', price: 22000, desc: 'Musculación + Clases Grupales + Calistenia ilimitado.' }
+        ];
+
+        const currentDateObj = new Date();
+        const currentYear = currentDateObj.getFullYear();
+        const currentMonth = currentDateObj.getMonth() + 1;
+
+        const INITIAL_CLIENTS = [
+            { id: 'c1', name: 'Martín Benítez', dni: '37890123', phone: '2604556677', birth: '1993-11-15', planId: 'p1', status: 'active' },
+            { id: 'c2', name: 'Sofia Martínez', dni: '40123456', phone: '2604112233', birth: '1997-11-20', planId: 'p3', status: 'active' },
+            { id: 'c3', name: 'Lucas Gómez', dni: '35678901', phone: '2604998877', birth: '1990-04-12', planId: 'p2', status: 'active' },
+            { id: 'c4', name: 'Camila Navarro', dni: '42345678', phone: '2604334455', birth: '2000-01-05', planId: 'p1', status: 'active' },
+            { id: 'c5', name: 'Gonzalo Fernández', dni: '32111222', phone: '2604223344', birth: '1986-08-25', planId: 'p2', status: 'inactive' }
+        ];
+
+        const INITIAL_PAYMENTS = [
+            { id: 'pay1', clientId: 'c1', month: currentMonth, year: currentYear, amount: 18000, date: `${currentYear}-${String(currentMonth).padStart(2,'0')}-02`, method: 'Transferencia' },
+            { id: 'pay2', clientId: 'c2', month: currentMonth, year: currentYear, amount: 22000, date: `${currentYear}-${String(currentMonth).padStart(2,'0')}-05`, method: 'Efectivo' }
+        ];
+
+        // --- STATE MANAGEMENT ---
+        let plans = [];
+        let clients = [];
+        let payments = [];
+        let currentUser = null;
+
+        // --- INIT & DOM LOAD ---
+        window.onload = function() {
+            // Mobile Menu Handlers
+            const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+            const sidebar = document.getElementById('sidebar');
+            const mobileOverlay = document.getElementById('mobileOverlay');
+
+            function toggleMobileMenu() {
+                sidebar.classList.toggle('-translate-x-full');
+                mobileOverlay.classList.toggle('hidden');
+            }
+
+            mobileMenuBtn?.addEventListener('click', toggleMobileMenu);
+            mobileOverlay?.addEventListener('click', toggleMobileMenu);
+
+            // Display current date
+            document.getElementById('currentDateDisplay').innerText = currentDateObj.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+            // Fill Year Filters / Selects
+            populateYearOptions();
+            populateMonthOptions();
+
+            // Init Firebase Authentication and Realtime Sync
+            initCloudConnection();
+        };
+
+        // --- CLOUD FIREBASE INITIALIZATION & REAL-TIME LISTENERS ---
+        async function initCloudConnection() {
+            // Wait brief moment for Firebase module scripts to expose window.fbUtils
+            let attempts = 0;
+            while (!window.fbUtils && attempts < 20) {
+                await new Promise(r => setTimeout(r, 100));
+                attempts++;
+            }
+
+            if (!window.fbUtils) {
+                console.error("No se pudo cargar Firebase");
+                return;
+            }
+
+            const { auth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } = { ...window.fbUtils, auth: window.fbAuth };
+
+            // Auth Priority (Rule 3)
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.warn("Auth token fallback to anonymous", err);
+                await signInAnonymously(auth);
+            }
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    currentUser = user;
+                    checkAuthStatus();
+                    setupRealtimeSync();
+                }
+            });
+        }
+
+        function setupRealtimeSync() {
+            if (!currentUser || !window.fbUtils) return;
+            const { getCollectionRef, onSnapshot } = window.fbUtils;
+
+            // Real-time Plans Sync
+            onSnapshot(getCollectionRef('plans'), (snapshot) => {
+                plans = [];
+                snapshot.forEach(doc => plans.push(doc.data()));
+                if (plans.length === 0) seedInitialDataToCloud();
+                refreshUI();
+            }, (error) => console.error("Error leyendo planes:", error));
+
+            // Real-time Clients Sync
+            onSnapshot(getCollectionRef('clients'), (snapshot) => {
+                clients = [];
+                snapshot.forEach(doc => clients.push(doc.data()));
+                refreshUI();
+            }, (error) => console.error("Error leyendo clientes:", error));
+
+            // Real-time Payments Sync
+            onSnapshot(getCollectionRef('payments'), (snapshot) => {
+                payments = [];
+                snapshot.forEach(doc => payments.push(doc.data()));
+                refreshUI();
+            }, (error) => console.error("Error leyendo pagos:", error));
+        }
+
+        // --- SEED CLOUD DATA IF EMPTY ---
+        async function seedInitialDataToCloud() {
+            if (!currentUser || !window.fbUtils) return;
+            const { getDocRef, setDoc } = window.fbUtils;
+
+            try {
+                for (const p of INITIAL_PLANS) {
+                    await setDoc(getDocRef('plans', p.id), p);
+                }
+                for (const c of INITIAL_CLIENTS) {
+                    await setDoc(getDocRef('clients', c.id), c);
+                }
+                for (const pay of INITIAL_PAYMENTS) {
+                    await setDoc(getDocRef('payments', pay.id), pay);
+                }
+                showToast('Datos sincronizados en la nube.');
+            } catch (err) {
+                console.error("Error al cargar datos iniciales:", err);
+            }
+        }
+
+        // --- AUTHENTICATION FUNCTIONS ---
+        function checkAuthStatus() {
+            const loggedIn = localStorage.getItem('eq_session_logged');
+            const loginScreen = document.getElementById('loginScreen');
+            if (loggedIn === 'true') {
+                loginScreen.classList.add('hidden');
+            } else {
+                loginScreen.classList.remove('hidden');
+            }
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const userInput = document.getElementById('loginUser').value.trim();
+            const passInput = document.getElementById('loginPass').value.trim();
+            const errorEl = document.getElementById('loginError');
+
+            if (userInput === ADMIN_USER && passInput === ADMIN_PASS) {
+                localStorage.setItem('eq_session_logged', 'true');
+                errorEl.classList.add('hidden');
+                document.getElementById('loginScreen').classList.add('hidden');
+                showToast('¡Sesión iniciada en la nube!');
+            } else {
+                errorEl.classList.remove('hidden');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('eq_session_logged');
+            document.getElementById('loginScreen').classList.remove('hidden');
+            showToast('Sesión cerrada.');
+        }
+
+        function populateYearOptions() {
+            const yearSelects = [document.getElementById('filterPaymentYear'), document.getElementById('paymentYear')];
+            yearSelects.forEach(sel => {
+                if(!sel) return;
+                sel.innerHTML = '';
+                for (let y = currentYear - 1; y <= currentYear + 1; y++) {
+                    const opt = document.createElement('option');
+                    opt.value = y;
+                    opt.textContent = y;
+                    if (y === currentYear) opt.selected = true;
+                    sel.appendChild(opt);
+                }
+            });
+        }
+
+        function populateMonthOptions() {
+            const filterMonthSel = document.getElementById('filterPaymentMonth');
+            const defaulterMonthSel = document.getElementById('defaulterMonthSelect');
+            
+            if(filterMonthSel) {
+                filterMonthSel.innerHTML = '<option value="">Todos los meses</option>';
+                MONTH_NAMES.forEach((m, idx) => {
+                    filterMonthSel.innerHTML += `<option value="${idx + 1}">${m}</option>`;
+                });
+            }
+
+            if(defaulterMonthSel) {
+                defaulterMonthSel.innerHTML = '';
+                MONTH_NAMES.forEach((m, idx) => {
+                    const selected = (idx + 1) === currentMonth ? 'selected' : '';
+                    defaulterMonthSel.innerHTML += `<option value="${idx + 1}" ${selected}>${m} ${currentYear}</option>`;
+                });
+            }
+        }
+
+        // --- NAVIGATION TABS ---
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('bg-white/10', 'text-white', 'border-white/20');
+                btn.classList.add('text-brand-muted', 'border-transparent');
+            });
+
+            document.getElementById(`sec-${tabId}`).classList.remove('hidden');
+
+            const activeBtn = document.getElementById(`nav-${tabId}`);
+            if (activeBtn) {
+                activeBtn.classList.add('bg-white/10', 'text-white', 'border-white/20');
+                activeBtn.classList.remove('text-brand-muted', 'border-transparent');
+            }
+
+            document.getElementById('sidebar').classList.add('-translate-x-full');
+            document.getElementById('mobileOverlay').classList.add('hidden');
+
+            if (tabId === 'clients') renderClientsTable();
+            if (tabId === 'payments') renderPaymentsTable();
+            if (tabId === 'plans') renderPlansGrid();
+            if (tabId === 'defaulters') renderDefaultersTable();
+            if (tabId === 'dashboard') renderDashboard();
+        }
+
+        // --- GLOBAL REFRESH ---
+        function refreshUI() {
+            renderDashboard();
+            renderClientsTable();
+            renderPaymentsTable();
+            renderPlansGrid();
+            renderDefaultersTable();
+        }
+
+        // --- HELPER FUNCTIONS ---
+        function getPlanName(planId) {
+            const p = plans.find(x => x.id === planId);
+            return p ? p.name : 'Plan no encontrado';
+        }
+
+        function getPlanPrice(planId) {
+            const p = plans.find(x => x.id === planId);
+            return p ? p.price : 0;
+        }
+
+        function isPaid(clientId, month, year) {
+            return payments.some(p => p.clientId === clientId && parseInt(p.month) === parseInt(month) && parseInt(p.year) === parseInt(year));
+        }
+
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(amount);
+        }
+
+        // --- DASHBOARD LOGIC ---
+        function renderDashboard() {
+            const activeClients = clients.filter(c => c.status === 'active');
+            const totalActiveCount = activeClients.length;
+            document.getElementById('statTotalActive').innerText = totalActiveCount;
+            document.getElementById('statTotalClients').innerText = `${clients.length} clientes registrados`;
+
+            const paidCount = activeClients.filter(c => isPaid(c.id, currentMonth, currentYear)).length;
+            const unpaidCount = totalActiveCount - paidCount;
+
+            document.getElementById('statPaidThisMonth').innerText = paidCount;
+            const percentage = totalActiveCount > 0 ? Math.round((paidCount / totalActiveCount) * 100) : 0;
+            document.getElementById('statPaidPercentage').innerText = `${percentage}% del total de activos`;
+
+            document.getElementById('statUnpaidThisMonth').innerText = unpaidCount;
+
+            const thisMonthPayments = payments.filter(p => parseInt(p.month) === currentMonth && parseInt(p.year) === currentYear);
+            const totalIncome = thisMonthPayments.reduce((acc, curr) => acc + Number(curr.amount), 0);
+            
+            document.getElementById('statIncomeMonth').innerText = formatCurrency(totalIncome);
+            document.getElementById('statIncomeCount').innerText = `${thisMonthPayments.length} cobros en ${MONTH_NAMES[currentMonth - 1]}`;
+
+            renderAlerts(unpaidCount);
+            renderBirthdays();
+            renderRecentPaymentsWidget();
+        }
+
+        function renderAlerts(unpaidCount) {
+            const container = document.getElementById('alertContainer');
+            container.innerHTML = '';
+
+            if (unpaidCount > 0) {
+                container.innerHTML += `
+                    <div class="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-center justify-between text-amber-200">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-triangle-exclamation text-amber-400 text-xl"></i>
+                            <div>
+                                <p class="font-semibold text-sm">Alerta de Cuotas Pendientes (${MONTH_NAMES[currentMonth - 1]})</p>
+                                <p class="text-xs text-amber-300/80">Hay ${unpaidCount} cliente(s) activo(s) sin registrar pago en este mes.</p>
+                            </div>
+                        </div>
+                        <button onclick="switchTab('defaulters')" class="bg-amber-400 hover:bg-amber-300 text-black px-3 py-1.5 rounded-xl text-xs font-bold transition">
+                            Revisar Impagos
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        function renderBirthdays() {
+            const listEl = document.getElementById('birthdayList');
+            listEl.innerHTML = '';
+
+            const today = new Date();
+            today.setHours(0,0,0,0);
+
+            const upcoming = clients.filter(c => {
+                if (!c.birth) return false;
+                const bdate = new Date(c.birth + 'T00:00:00');
+                
+                const nextBday = new Date(today.getFullYear(), bdate.getMonth(), bdate.getDate());
+                if (nextBday < today) {
+                    nextBday.setFullYear(today.getFullYear() + 1);
+                }
+
+                const diffTime = nextBday - today;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                return diffDays >= 0 && diffDays <= 30;
+            }).map(c => {
+                const bdate = new Date(c.birth + 'T00:00:00');
+                const nextBday = new Date(today.getFullYear(), bdate.getMonth(), bdate.getDate());
+                if (nextBday < today) nextBday.setFullYear(today.getFullYear() + 1);
+                const diffDays = Math.ceil((nextBday - today) / (1000 * 60 * 60 * 24));
+
+                return { ...c, daysLeft: diffDays, bdateStr: `${bdate.getDate()} de ${MONTH_NAMES[bdate.getMonth()]}` };
+            }).sort((a,b) => a.daysLeft - b.daysLeft);
+
+            document.getElementById('bdayCount').innerText = upcoming.length;
+
+            if (upcoming.length === 0) {
+                listEl.innerHTML = `<p class="text-xs text-brand-muted text-center py-6">No hay cumpleaños próximos en los siguientes 30 días.</p>`;
+                return;
+            }
+
+            upcoming.forEach(item => {
+                const badge = item.daysLeft === 0 
+                    ? `<span class="bg-white text-black font-extrabold text-[10px] px-2 py-0.5 rounded-md uppercase animate-pulse">¡HOY! 🎉</span>` 
+                    : `<span class="text-xs text-brand-muted">En ${item.daysLeft} días</span>`;
+
+                listEl.innerHTML += `
+                    <div class="flex items-center justify-between p-3 rounded-xl bg-brand-dark/60 border border-brand-border">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center font-bold text-xs">
+                                ${item.name.charAt(0)}
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-semibold text-white leading-tight">${item.name}</h4>
+                                <p class="text-xs text-brand-muted">${item.bdateStr}</p>
+                            </div>
+                        </div>
+                        <div>${badge}</div>
+                    </div>
+                `;
+            });
+        }
+
+        function renderRecentPaymentsWidget() {
+            const container = document.getElementById('recentPaymentsList');
+            container.innerHTML = '';
+
+            const sortedPayments = [...payments].sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+
+            if (sortedPayments.length === 0) {
+                container.innerHTML = `<p class="text-xs text-brand-muted text-center py-6">Aún no hay cobros registrados.</p>`;
+                return;
+            }
+
+            sortedPayments.forEach(p => {
+                const client = clients.find(c => c.id === p.clientId) || { name: 'Desconocido' };
+                container.innerHTML += `
+                    <div class="flex items-center justify-between p-3 rounded-xl bg-brand-dark/60 border border-brand-border">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-xs">
+                                <i class="fa-solid fa-check"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-semibold text-white leading-tight">${client.name}</h4>
+                                <p class="text-xs text-brand-muted">Cuota: ${MONTH_NAMES[p.month - 1]} ${p.year} (${p.method})</p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="font-bold text-white text-sm">${formatCurrency(p.amount)}</span>
+                            <p class="text-[10px] text-brand-muted">${p.date}</p>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // --- CLIENT MANAGEMENT ---
+        function renderClientsTable() {
+            const tbody = document.getElementById('clientsTableBody');
+            const search = document.getElementById('searchClientInput')?.value.toLowerCase() || '';
+            const planFilter = document.getElementById('filterClientPlan')?.value || '';
+            const statusFilter = document.getElementById('filterClientStatus')?.value || 'all';
+
+            const planSelect = document.getElementById('filterClientPlan');
+            if (planSelect && planSelect.options.length <= 1) {
+                planSelect.innerHTML = '<option value="">Todos los planes</option>';
+                plans.forEach(p => {
+                    planSelect.innerHTML += `<option value="${p.id}">${p.name}</option>`;
+                });
+            }
+
+            let filtered = clients.filter(c => {
+                const matchesSearch = c.name.toLowerCase().includes(search) || c.dni.includes(search) || c.phone.includes(search);
+                const matchesPlan = planFilter === '' || c.planId === planFilter;
+                const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
+                return matchesSearch && matchesPlan && matchesStatus;
+            });
+
+            tbody.innerHTML = '';
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center p-6 text-brand-muted">No se encontraron clientes.</td></tr>`;
+                return;
+            }
+
+            filtered.forEach(c => {
+                const paidThisMonth = isPaid(c.id, currentMonth, currentYear);
+                const statusBadge = c.status === 'active'
+                    ? `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Activo</span>`
+                    : `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/20"><span class="w-1.5 h-1.5 rounded-full bg-red-400"></span> Inactivo</span>`;
+
+                const paymentBadge = paidThisMonth
+                    ? `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-white/10 text-white border border-white/20"><i class="fa-solid fa-check text-emerald-400 mr-1"></i> Al Día (${MONTH_NAMES[currentMonth - 1]})</span>`
+                    : `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20"><i class="fa-solid fa-clock mr-1"></i> Pendiente</span>`;
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-brand-dark/40 transition">
+                        <td class="p-4 font-semibold text-white">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center font-bold text-xs">
+                                    ${c.name.charAt(0)}
+                                </div>
+                                <div>
+                                    ${c.name}
+                                    ${c.birth ? `<p class="text-[11px] text-brand-muted font-normal"><i class="fa-solid fa-cake-candles mr-1"></i>${c.birth}</p>` : ''}
+                                </div>
+                            </div>
+                        </td>
+                        <td class="p-4 text-brand-muted">
+                            <div>DNI: ${c.dni}</div>
+                            <div class="text-xs text-brand-muted/80"><i class="fa-solid fa-phone mr-1"></i>${c.phone}</div>
+                        </td>
+                        <td class="p-4 font-medium text-gray-200">${getPlanName(c.planId)}</td>
+                        <td class="p-4">${paymentBadge}</td>
+                        <td class="p-4">${statusBadge}</td>
+                        <td class="p-4 text-right space-x-2">
+                            <button onclick="openClientModal('${c.id}')" title="Editar Cliente" class="p-2 text-brand-muted hover:text-white transition">
+                                <i class="fa-solid fa-pen-to-square"></i>
+                            </button>
+                            <button onclick="toggleClientStatus('${c.id}')" title="${c.status === 'active' ? 'Dada de baja' : 'Reactivar'}" class="p-2 ${c.status === 'active' ? 'text-brand-muted hover:text-amber-400' : 'text-emerald-400 hover:text-emerald-300'} transition">
+                                <i class="fa-solid ${c.status === 'active' ? 'fa-user-slash' : 'fa-user-check'}"></i>
+                            </button>
+                            <button onclick="deleteClient('${c.id}')" title="Eliminar Cliente" class="p-2 text-brand-muted hover:text-red-400 transition">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        function openClientModal(clientId = null) {
+            const modal = document.getElementById('clientModal');
+            const form = document.getElementById('clientForm');
+            const title = document.getElementById('clientModalTitle');
+            const planSelect = document.getElementById('clientPlanId');
+
+            planSelect.innerHTML = '';
+            plans.forEach(p => {
+                planSelect.innerHTML += `<option value="${p.id}">${p.name} (${formatCurrency(p.price)})</option>`;
+            });
+
+            if (clientId) {
+                const client = clients.find(c => c.id === clientId);
+                if (!client) return;
+                title.innerText = 'Modificar Cliente';
+                document.getElementById('clientId').value = client.id;
+                document.getElementById('clientName').value = client.name;
+                document.getElementById('clientDni').value = client.dni;
+                document.getElementById('clientPhone').value = client.phone;
+                document.getElementById('clientBirth').value = client.birth || '';
+                document.getElementById('clientPlanId').value = client.planId;
+                document.getElementById('clientStatus').value = client.status;
+            } else {
+                title.innerText = 'Alta de Nuevo Cliente';
+                form.reset();
+                document.getElementById('clientId').value = '';
+                document.getElementById('clientStatus').value = 'active';
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        async function saveClient(e) {
+            e.preventDefault();
+            if (!currentUser || !window.fbUtils) return;
+            const { getDocRef, setDoc } = window.fbUtils;
+
+            const id = document.getElementById('clientId').value || 'c_' + Date.now();
+            const name = document.getElementById('clientName').value.trim();
+            const dni = document.getElementById('clientDni').value.trim();
+            const phone = document.getElementById('clientPhone').value.trim();
+            const birth = document.getElementById('clientBirth').value;
+            const planId = document.getElementById('clientPlanId').value;
+            const status = document.getElementById('clientStatus').value;
+
+            const clientData = { id, name, dni, phone, birth, planId, status };
+
+            try {
+                await setDoc(getDocRef('clients', id), clientData);
+                showToast('Cliente guardado en la nube.');
+                closeModal('clientModal');
+            } catch (err) {
+                console.error("Error guardando cliente:", err);
+            }
+        }
+
+        async function toggleClientStatus(id) {
+            if (!currentUser || !window.fbUtils) return;
+            const { getDocRef, setDoc } = window.fbUtils;
+
+            const client = clients.find(c => c.id === id);
+            if (client) {
+                const updated = { ...client, status: client.status === 'active' ? 'inactive' : 'active' };
+                await setDoc(getDocRef('clients', id), updated);
+                showToast(`Estado de ${client.name} actualizado en la nube.`);
+            }
+        }
+
+        async function deleteClient(id) {
+            if (!currentUser || !window.fbUtils) return;
+            const { getDocRef, deleteDoc } = window.fbUtils;
+
+            const client = clients.find(c => c.id === id);
+            if (!client) return;
+            if (confirm(`¿Estás seguro de eliminar a ${client.name}? Esta acción eliminará su ficha en todos los dispositivos.`)) {
+                await deleteDoc(getDocRef('clients', id));
+                showToast('Cliente eliminado de la nube.');
+            }
+        }
+
+        // --- PAYMENT MANAGEMENT ---
+        function renderPaymentsTable() {
+            const tbody = document.getElementById('paymentsTableBody');
+            const search = document.getElementById('searchPaymentInput')?.value.toLowerCase() || '';
+            const monthFilter = document.getElementById('filterPaymentMonth')?.value || '';
+            const yearFilter = document.getElementById('filterPaymentYear')?.value || '';
+
+            let filtered = payments.filter(p => {
+                const client = clients.find(c => c.id === p.clientId);
+                const clientName = client ? client.name.toLowerCase() : '';
+                const matchesSearch = clientName.includes(search);
+                const matchesMonth = monthFilter === '' || parseInt(p.month) === parseInt(monthFilter);
+                const matchesYear = yearFilter === '' || parseInt(p.year) === parseInt(yearFilter);
+                return matchesSearch && matchesMonth && matchesYear;
+            }).sort((a,b) => new Date(b.date) - new Date(a.date));
+
+            tbody.innerHTML = '';
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="text-center p-6 text-brand-muted">No hay registros de pago para la búsqueda seleccionada.</td></tr>`;
+                return;
+            }
+
+            filtered.forEach(p => {
+                const client = clients.find(c => c.id === p.clientId) || { name: 'Cliente Eliminado', planId: null };
+                tbody.innerHTML += `
+                    <tr class="hover:bg-brand-dark/40 transition">
+                        <td class="p-4 font-mono text-xs text-brand-muted">${p.date}</td>
+                        <td class="p-4 font-semibold text-white">${client.name}</td>
+                        <td class="p-4">
+                            <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-white/10 text-white">
+                                ${MONTH_NAMES[p.month - 1]} ${p.year}
+                            </span>
+                        </td>
+                        <td class="p-4 text-brand-muted">${getPlanName(client.planId)}</td>
+                        <td class="p-4 font-bold text-white">${formatCurrency(p.amount)}</td>
+                        <td class="p-4 text-xs text-brand-muted"><i class="fa-regular fa-credit-card mr-1"></i>${p.method || 'Efectivo'}</td>
+                        <td class="p-4 text-right">
+                            <button onclick="deletePayment('${p.id}')" title="Anular Pago" class="p-2 text-brand-muted hover:text-red-400 transition">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        function openPaymentModal(clientId = null) {
+            const modal = document.getElementById('paymentModal');
+            const clientSelect = document.getElementById('paymentClientId');
+            
+            clientSelect.innerHTML = '<option value="">-- Seleccionar Cliente --</option>';
+            clients.filter(c => c.status === 'active').forEach(c => {
+                clientSelect.innerHTML += `<option value="${c.id}">${c.name} (DNI: ${c.dni})</option>`;
+            });
+
+            document.getElementById('paymentMonth').value = currentMonth;
+            document.getElementById('paymentYear').value = currentYear;
+            document.getElementById('paymentDate').value = currentDateObj.toISOString().split('T')[0];
+
+            if (clientId) {
+                clientSelect.value = clientId;
+                onPaymentClientChange();
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        function onPaymentClientChange() {
+            const clientId = document.getElementById('paymentClientId').value;
+            const client = clients.find(c => c.id === clientId);
+            if (client) {
+                const price = getPlanPrice(client.planId);
+                document.getElementById('paymentAmount').value = price;
+            } else {
+                document.getElementById('paymentAmount').value = '';
+            }
+        }
+
+        async function savePayment(e) {
+            e.preventDefault();
+            if (!currentUser || !window.fbUtils) return;
+            const { getDocRef, setDoc } = window.fbUtils;
+
+            const clientId = document.getElementById('paymentClientId').value;
+            const month = parseInt(document.getElementById('paymentMonth').value);
+            const year = parseInt(document.getElementById('paymentYear').value);
+            const amount = parseFloat(document.getElementById('paymentAmount').value);
+            const method = document.getElementById('paymentMethod').value;
+            const date = document.getElementById('paymentDate').value;
+
+            if (!clientId) {
+                alert('Por favor selecciona un cliente.');
+                return;
+            }
+
+            if (isPaid(clientId, month, year)) {
+                if (!confirm(`Advertencia: Este cliente ya posee un pago registrado para ${MONTH_NAMES[month - 1]} ${year}. ¿Deseas registrar otro pago de todos modos?`)) {
+                    return;
+                }
+            }
+
+            const id = 'pay_' + Date.now();
+            const newPayment = { id, clientId, month, year, amount, method, date };
+
+            try {
+                await setDoc(getDocRef('payments', id), newPayment);
+                closeModal('paymentModal');
+                showToast('Pago registrado y sincronizado.');
+            } catch (err) {
+                console.error("Error al guardar el pago:", err);
+            }
+        }
+
+        async function deletePayment(id) {
+            if (!currentUser || !window.fbUtils) return;
+            const { getDocRef, deleteDoc } = window.fbUtils;
+
+            if (confirm('¿Estás seguro de anular/eliminar este registro de pago de la nube?')) {
+                await deleteDoc(getDocRef('payments', id));
+                showToast('Registro de pago eliminado.');
+            }
+        }
+
+        // --- PLAN MANAGEMENT ---
+        function renderPlansGrid() {
+            const grid = document.getElementById('plansGrid');
+            grid.innerHTML = '';
+
+            if (plans.length === 0) {
+                grid.innerHTML = `<div class="col-span-full text-center py-10 text-brand-muted">No hay planes creados. Haz clic en "Crear Nuevo Plan" para añadir uno.</div>`;
+                return;
+            }
+
+            plans.forEach(p => {
+                const assignedCount = clients.filter(c => c.planId === p.id && c.status === 'active').length;
+                grid.innerHTML += `
+                    <div class="bg-brand-card rounded-2xl border border-brand-border p-6 flex flex-col justify-between hover:border-white/40 transition">
+                        <div>
+                            <div class="flex justify-between items-start mb-4">
+                                <h3 class="text-xl font-bold text-white">${p.name}</h3>
+                                <span class="bg-white/10 text-white font-extrabold text-sm px-3 py-1 rounded-xl border border-white/20">
+                                    ${formatCurrency(p.price)}
+                                </span>
+                            </div>
+                            <p class="text-xs text-brand-muted leading-relaxed mb-6">${p.desc || 'Sin descripción adicional.'}</p>
+                        </div>
+                        <div>
+                            <div class="flex justify-between items-center text-xs text-brand-muted border-t border-brand-border pt-4 mb-4">
+                                <span>Clientes Activos:</span>
+                                <span class="font-bold text-white">${assignedCount} usuarios</span>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="openPlanModal('${p.id}')" class="flex-1 bg-brand-dark hover:bg-brand-border text-white text-xs font-semibold py-2 rounded-xl transition border border-brand-border">
+                                    <i class="fa-solid fa-pen mr-1"></i> Editar
+                                </button>
+                                <button onclick="deletePlan('${p.id}')" class="px-3 bg-brand-dark hover:bg-red-500/20 text-brand-muted hover:text-red-400 text-xs py-2 rounded-xl transition border border-brand-border">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function openPlanModal(planId = null) {
+            const modal = document.getElementById('planModal');
+            const form = document.getElementById('planForm');
+            const title = document.getElementById('planModalTitle');
+
+            if (planId) {
+                const plan = plans.find(p => p.id === planId);
+                if (!plan) return;
+                title.innerText = 'Modificar Plan';
+                document.getElementById('planId').value = plan.id;
+                document.getElementById('planName').value = plan.name;
+                document.getElementById('planPrice').value = plan.price;
+                document.getElementById('planDesc').value = plan.desc || '';
+            } else {
+                title.innerText = 'Crear Nuevo Plan';
+                form.reset();
+                document.getElementById('planId').value = '';
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        async function savePlan(e) {
+            e.preventDefault();
+            if (!currentUser || !window.fbUtils) return;
+            const { getDocRef, setDoc } = window.fbUtils;
+
+            const id = document.getElementById('planId').value || 'p_' + Date.now();
+            const name = document.getElementById('planName').value.trim();
+            const price = parseFloat(document.getElementById('planPrice').value);
+            const desc = document.getElementById('planDesc').value.trim();
+
+            const planData = { id, name, price, desc };
+
+            try {
+                await setDoc(getDocRef('plans', id), planData);
+                showToast('Plan guardado en la nube.');
+                closeModal('planModal');
+            } catch (err) {
+                console.error("Error guardando plan:", err);
+            }
+        }
+
+        async function deletePlan(id) {
+            if (!currentUser || !window.fbUtils) return;
+            const { getDocRef, deleteDoc } = window.fbUtils;
+
+            const assignedCount = clients.filter(c => c.planId === id).length;
+            if (assignedCount > 0) {
+                alert(`No se puede eliminar este plan porque hay ${assignedCount} cliente(s) asignados a él.`);
+                return;
+            }
+            if (confirm('¿Eliminar este plan de la nube?')) {
+                await deleteDoc(getDocRef('plans', id));
+                showToast('Plan eliminado.');
+            }
+        }
+
+        // --- DEFAULTERS / IMPAGOS SECTION ---
+        function renderDefaultersTable() {
+            const tbody = document.getElementById('defaultersTableBody');
+            const selectedMonth = parseInt(document.getElementById('defaulterMonthSelect')?.value || currentMonth);
+
+            const defaulters = clients.filter(c => c.status === 'active' && !isPaid(c.id, selectedMonth, currentYear));
+
+            tbody.innerHTML = '';
+
+            if (defaulters.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="text-center p-8 text-emerald-400">
+                            <i class="fa-solid fa-circle-check text-2xl mb-2 block"></i>
+                            ¡Excelente! No hay clientes morosos registrados para ${MONTH_NAMES[selectedMonth - 1]} ${currentYear}.
+                        </td>
+                    </tr>`;
+                return;
+            }
+
+            defaulters.forEach(c => {
+                const userPayments = payments.filter(p => p.clientId === c.id).sort((a,b) => new Date(b.date) - new Date(a.date));
+                const lastPay = userPayments.length > 0 ? `${userPayments[0].date} (${MONTH_NAMES[userPayments[0].month - 1]})` : 'Sin cobros previos';
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-brand-dark/40 transition">
+                        <td class="p-4 font-semibold text-white">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-xs">
+                                    !
+                                </div>
+                                ${c.name}
+                            </div>
+                        </td>
+                        <td class="p-4 text-brand-muted"><i class="fa-solid fa-phone mr-1"></i>${c.phone}</td>
+                        <td class="p-4 text-white">${getPlanName(c.planId)}</td>
+                        <td class="p-4 font-bold text-amber-400">${formatCurrency(getPlanPrice(c.planId))}</td>
+                        <td class="p-4 text-xs text-brand-muted">${lastPay}</td>
+                        <td class="p-4 text-right">
+                            <button onclick="openPaymentModal('${c.id}')" class="bg-white hover:bg-gray-200 text-black font-semibold text-xs px-3 py-1.5 rounded-xl transition shadow">
+                                Cobrar Cuota
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // --- UTILS & MODALS ---
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMsg').innerText = msg;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
