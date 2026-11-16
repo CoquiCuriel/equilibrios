@@ -18,9 +18,15 @@
         import { getFirestore, collection, doc, onSnapshot, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Firebase Config and Initialization
-        const firebaseConfig = typeof __firebase_config !== 'undefined' 
-            ? JSON.parse(__firebase_config) 
-            : { apiKey: "demo-api-key", authDomain: "demo.firebaseapp.com", projectId: "demo-project" };
+       
+        const firebaseConfig = {
+          apiKey: "AIzaSyDnYQ50u8syAJSE6Ezy3yVYEWnMH9tAzOk",
+          authDomain: "equilibrios-gym.firebaseapp.com",
+          projectId: "equilibrios-gym",
+          storageBucket: "equilibrios-gym.firebasestorage.app",
+          messagingSenderId: "469730631752",
+          appId: "1:469730631752:web:9589902a5fb9891483387d"
+        };
             
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'equilibrios-gym';
         
